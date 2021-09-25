@@ -14,9 +14,9 @@ class Expr:
 
 def tokenise(s):
     tokens = [
-        ('NOT',     r'!'),
-        ('OR',      r'v'),
-        ('AND',     r'\^'),
+        ('NOT',     r'!|~'),
+        ('OR',      r'v|\|'),
+        ('AND',     r'\^|&'),
         ('IMPLIES', r'->'),
         ('EQUIV',   r'<->'),
         ('LPAREN',  r'\('),
