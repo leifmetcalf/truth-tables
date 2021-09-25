@@ -179,14 +179,14 @@ def make_table(exprs, expr_vars):
     exprs = list(chain((Expr(Head.SYMBOL, value = v) for v in expr_vars), exprs))
     for env in envs:
         table.append(' & '.join(str(int(eval_expr(expr, env))) for expr in exprs))
-    return ''.join([
+    return ''.join((
         '\\begin{tabular}{',
         'c' * len(exprs),
         '}\\toprule\n',
         ' & '.join(f'\\({pretty(expr)}\\)' for expr in exprs),
         '\\\\\\midrule\n',
         '\\\\\n'.join(table),
-        '\\\\\\bottomrule\n\\end{tabular}'])
+        '\\\\\\bottomrule\n\\end{tabular}'))
 
 for s in fileinput.input():
     expr = flatten(parse(tokenise(s)))
