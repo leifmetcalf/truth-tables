@@ -1,16 +1,16 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
 from enum import Enum
+from itertools import chain, groupby
 import fileinput
 from re import finditer
+from typing import NamedTuple
 
 Head = Enum('Head', 'SYMBOL NOT OR AND IMPLIES EQUIV PAREN')
 
-@dataclass
-class Expr:
+class Expr(NamedTuple):
     head: Head
-    value: str = None
-    children: list[Expr] = field(default_factory = list)
+    value: Any = None
+    children: tuple[Expr, ...] = tuple()
 
 def tokenise(s):
     tokens = [
@@ -43,36 +43,36 @@ def match(tokens, token):
 def parse_1(tokens):
     left = parse_2(tokens)
     while try_match(tokens, 'IMPLIES'):
-        left = Expr(Head.IMPLIES, children = [left, parse_2(tokens)])
+        left = Expr(Head.IMPLIES, children = (left, parse_2(tokens)))
     return left
 
 def parse_2(tokens):
     left = parse_3(tokens)
     while try_match(tokens, 'EQUIV'):
-        left = Expr(Head.EQUIV, children = [left, parse_3(tokens)])
+        left = Expr(Head.EQUIV, children = (left, parse_3(tokens)))
     return left
 
 def parse_3(tokens):
     left = parse_4(tokens)
     while try_match(tokens, 'OR'):
-        left = Expr(Head.OR, children = [left, parse_3(tokens)])
+        left = Expr(Head.OR, children = (left, parse_3(tokens)))
     return left
 
 def parse_4(tokens):
     left = parse_5(tokens)
     while try_match(tokens, 'AND'):
-        left = Expr(Head.AND, children = [left, parse_3(tokens)])
+        left = Expr(Head.AND, children = (left, parse_3(tokens)))
     return left
 
 def parse_5(tokens):
     if try_match(tokens, 'NOT'):
-        return Expr(Head.NOT, children = [parse_5(tokens)])
+        return Expr(Head.NOT, children = (parse_5(tokens),))
     elif token := try_match(tokens, 'SYMBOL'):
         return Expr(Head.SYMBOL, value = token.group('SYMBOL'))
     elif try_match(tokens, 'LPAREN'):
         expr = parse_1(tokens)
         match(tokens, 'RPAREN')
-        return Expr(Head.PAREN, children = [expr])
+        return Expr(Head.PAREN, children = (expr,))
     else:
         raise Exception(f'Unexpected token \'{tokens[-1].lastgroup}\'')
 
@@ -117,21 +117,16 @@ def pretty(expr):
 def flatten(expr):
     flat_heads = {Head.OR, Head.AND}
     def go(expr):
-        new_children = []
-        for child in expr.children:
-            if child.head in flat_heads:
-                go(child)
-                if child.head == expr.head:
-                    for grandchild in child.children:
-                        new_children.append(grandchild)
-                else:
-                    new_children.append(child)
-            else:
-                new_children.append(child)
-        expr.children = new_children
-    go(expr)
+        if expr.head in flat_heads:
+            return expr._replace(children = tuple(chain.from_iterable(
+                child.children if child.head == expr.head else (child,)
+                    for child in map(go, expr.children)
+                )))
+        else:
+            return expr._replace(children = tuple(map(go, expr.children)))
+    return go(expr)
 
-def expr_vars(expr):
+def get_vars(expr):
     def go(expr):
         if expr.head == Head.SYMBOL:
             yield expr.value
@@ -165,27 +160,23 @@ def eval_expr(expr, env):
     return go(expr)
 
 def subexpressions(expr):
+    seen = set()
     def go(expr):
         for child in expr.children:
             yield from go(child)
-        if expr.head != Head.PAREN and expr.head != Head.SYMBOL:
+        if expr.head not in {Head.PAREN, Head.SYMBOL} and expr not in seen:
+            seen.add(expr)
             yield expr
-    exprs = [Expr(Head.SYMBOL, value = v) for v in expr_vars(expr)]
-    pretties = set()
-    for subexpr in go(expr):
-        p = pretty(subexpr)
-        if p not in pretties:
-            pretties.add(p)
-            exprs.append(subexpr)
-    return exprs
+    return go(expr)
 
-def make_table(exprs, variables):
+def make_table(exprs, expr_vars):
     envs = [dict()]
-    for v in reversed(variables):
+    for v in reversed(expr_vars):
         for i in range(len(envs)):
             envs.append(envs[i] | {v: 0})
             envs[i][v] = 1
     table = []
+    exprs = list(chain((Expr(Head.SYMBOL, value = v) for v in expr_vars), exprs))
     for env in envs:
         table.append(' & '.join(str(int(eval_expr(expr, env))) for expr in exprs))
     return ''.join([
@@ -198,7 +189,5 @@ def make_table(exprs, variables):
         '\\\\\\bottomrule\n\\end{tabular}'])
 
 for s in fileinput.input():
-    tokens = tokenise(s)
-    expr = parse(tokens)
-    flatten(expr)
-    print(make_table(subexpressions(expr), expr_vars(expr)))
+    expr = flatten(parse(tokenise(s)))
+    print(make_table(subexpressions(expr), get_vars(expr)))
