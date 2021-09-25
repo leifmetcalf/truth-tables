@@ -16,7 +16,7 @@ class Expr:
     children: list[Expr] = field(default_factory = list)
 
 def tokenise(s):
-    return ['', *reversed(findall(r'(\(|\)|<->|->|\^|v|!|[a-uw-zA-Z]+)', s))]
+    return ['', *reversed(findall(r'(\(|\)|<->|->|\^|&|v|\||!|~|[a-uw-zA-Z]+)', s))]
 
 def match(tokens, token):
     if tokens[-1] == token:
@@ -40,21 +40,21 @@ def parse_2(tokens):
 
 def parse_3(tokens):
     left = parse_4(tokens)
-    while tokens[-1] == 'v':
+    while tokens[-1] == 'v' or tokens[-1] == '|':
         tokens.pop()
         left = Expr(Head.OR, children = [left, parse_3(tokens)])
     return left
 
 def parse_4(tokens):
     left = parse_5(tokens)
-    while tokens[-1] == '^':
+    while tokens[-1] == '^' or tokens[-1] == '&':
         tokens.pop()
         left = Expr(Head.AND, children = [left, parse_3(tokens)])
     return left
 
 def parse_5(tokens):
     token = tokens.pop()
-    if token == '!':
+    if token == '!' or token == '~':
         return Expr(Head.NOT, children = [parse_5(tokens)])
     elif re.compile(r'[a-uw-zA-Z]').fullmatch(token):
         return Expr(Head.SYMBOL, value = token)
