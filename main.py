@@ -1,11 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from itertools import product, groupby
-from operator import attrgetter
 import fileinput
-from re import findall
-import re
+from re import finditer
 
 Head = Enum('Head', 'SYMBOL NOT OR AND IMPLIES EQUIV PAREN')
 
@@ -16,57 +13,72 @@ class Expr:
     children: list[Expr] = field(default_factory = list)
 
 def tokenise(s):
-    return ['', *reversed(findall(r'(\(|\)|<->|->|\^|v|!|[a-uw-zA-Z]+)', s))]
+    tokens = [
+        ('NOT',     r'!'),
+        ('OR',      r'v'),
+        ('AND',     r'\^'),
+        ('IMPLIES', r'->'),
+        ('EQUIV',   r'<->'),
+        ('LPAREN',  r'\('),
+        ('RPAREN',  r'\)'),
+        ('SYMBOL',  r'[a-uw-zA-Z]+'),
+        ('EOF',     r'$'),
+        ]
+    token_pattern = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in tokens)
+    return list(reversed(list(finditer(token_pattern, s))))
 
-def match(tokens, token):
-    if tokens[-1] == token:
+def try_match(tokens, token):
+    if tokens[-1].lastgroup == token:
         return tokens.pop()
     else:
-        raise Exception(f'Expected {token} in {list(reversed(tokens))}')
+        return None
+
+def match(tokens, token):
+    res = try_match(tokens, token)
+    if res:
+        return res
+    else:
+        raise Exception(f'Expected {token}')
 
 def parse_1(tokens):
     left = parse_2(tokens)
-    while tokens[-1] == '->':
-        tokens.pop()
+    while try_match(tokens, 'IMPLIES'):
         left = Expr(Head.IMPLIES, children = [left, parse_2(tokens)])
     return left
 
 def parse_2(tokens):
     left = parse_3(tokens)
-    while tokens[-1] == '<->':
-        tokens.pop()
+    while try_match(tokens, 'EQUIV'):
         left = Expr(Head.EQUIV, children = [left, parse_3(tokens)])
     return left
 
 def parse_3(tokens):
     left = parse_4(tokens)
-    while tokens[-1] == 'v':
-        tokens.pop()
+    while try_match(tokens, 'OR'):
         left = Expr(Head.OR, children = [left, parse_3(tokens)])
     return left
 
 def parse_4(tokens):
     left = parse_5(tokens)
-    while tokens[-1] == '^':
-        tokens.pop()
+    while try_match(tokens, 'AND'):
         left = Expr(Head.AND, children = [left, parse_3(tokens)])
     return left
 
 def parse_5(tokens):
-    token = tokens.pop()
-    if token == '!':
+    if try_match(tokens, 'NOT'):
         return Expr(Head.NOT, children = [parse_5(tokens)])
-    elif re.compile(r'[a-uw-zA-Z]').fullmatch(token):
-        return Expr(Head.SYMBOL, value = token)
-    elif token == '(':
+    elif token := try_match(tokens, 'SYMBOL'):
+        return Expr(Head.SYMBOL, value = token.group('SYMBOL'))
+    elif try_match(tokens, 'LPAREN'):
         expr = parse_1(tokens)
-        match(tokens, ')')
+        match(tokens, 'RPAREN')
         return Expr(Head.PAREN, children = [expr])
-    raise Exception(f'Unexpected token \'{token}\'')
+    else:
+        raise Exception(f'Unexpected token \'{tokens[-1].lastgroup}\'')
 
 def parse(tokens):
     expr = parse_1(tokens)
-    match(tokens, '')
+    match(tokens, 'EOF')
     return expr
 
 def pretty(expr):
