@@ -115,16 +115,13 @@ def pretty(expr):
     return ' '.join(go(expr))
 
 def flatten(expr):
-    flat_heads = {Head.OR, Head.AND}
-    def go(expr):
-        if expr.head in flat_heads:
-            return expr._replace(children = tuple(chain.from_iterable(
-                child.children if child.head == expr.head else (child,)
-                    for child in map(go, expr.children)
-                )))
-        else:
-            return expr._replace(children = tuple(map(go, expr.children)))
-    return go(expr)
+    if expr.head in {Head.OR, Head.AND}:
+        return expr._replace(children = tuple(chain.from_iterable(
+            child.children if child.head == expr.head else (child,)
+                for child in map(flatten, expr.children)
+            )))
+    else:
+        return expr._replace(children = tuple(map(flatten, expr.children)))
 
 def get_vars(expr):
     def go(expr):
