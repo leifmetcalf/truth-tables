@@ -134,26 +134,15 @@ def get_vars(expr):
 
 def eval_expr(expr, env):
     def go(expr):
-        if expr.head == Head.SYMBOL:
-            return env[expr.value]
-        elif expr.head == Head.NOT:
-            return not go(expr.children[0])
-        elif expr.head == Head.OR:
-            return any(go(child) for child in expr.children)
-        elif expr.head == Head.AND:
-            return all(go(child) for child in expr.children)
-        elif expr.head == Head.IMPLIES:
-            if len(expr.children) == 2:
-                return not go(expr.children[0]) or go(expr.children[1])
-            else:
-                raise Exception('Implication does not associate')
-        elif expr.head == Head.EQUIV:
-            if len(expr.children) == 2:
-                return go(expr.children[0]) == go(expr.children[1])
-            else:
-                raise Exception('Equivalence does not associate')
-        elif expr.head == Head.PAREN:
-            return go(expr.children[0])
+        return {
+            Head.SYMBOL:  lambda: env[expr.value],
+            Head.NOT:     lambda: not go(expr.children[0]),
+            Head.OR:      lambda: any(map(go, expr.children)),
+            Head.AND:     lambda: all(map(go, expr.children)),
+            Head.IMPLIES: lambda: not go(expr.children[0]) or go(expr.children[1]),
+            Head.EQUIV:   lambda: go(expr.children[0]) == go(expr.children[1]),
+            Head.PAREN:   lambda: go(expr.children[0]),
+            }[expr.head]()
     return go(expr)
 
 def subexpressions(expr):
